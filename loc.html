@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📍 Dynamic Attendance Checker</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 1rem;
+            text-align: center;
+            /* Gradient Background */
+            background: linear-gradient(135deg, #d8eda8 0%, #d6fefc 100%);
+            color: #333;
+            min-height: 100vh; /* Ensure full height */
+            display: flex;
+            flex-direction: column;
+            justify-content: center; /* Center content vertically */
+        }
+
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 1rem;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2); /* Add subtle text shadow */
+        }
+
+        .input-group,
+        #output,
+        #map {
+            /* Glass Effect */
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 1rem;
+            margin: 1rem 0;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.3rem;
+            font-weight: bold;
+            color: #2c3e50; /* Darker label text */
+        }
+
+        input {
+            width: 100%;
+            padding: 0.7rem; /* Increased padding */
+            border: 1px solid rgba(255, 255, 255, 0.5); /* Glassy border */
+            border-radius: 8px; /* More rounded */
+            margin-bottom: 0.7rem; /* Increased margin */
+            background: rgba(255, 255, 255, 0.1); /* Transparent input background */
+            color: #333;
+        }
+
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 1rem 2rem; /* Increased padding */
+            font-size: 1.1rem; /* Slightly larger text */
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s; /* Added transform */
+            margin: 0.5rem;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2); /* Added shadow */
+        }
+
+        button:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px); /* Slight lift on hover */
+        }
+
+        button:active {
+            transform: translateY(0); /* Reset transform when active */
+        }
+
+        #output {
+            text-align: center; /* Center text in output */
+        }
+
+        #map {
+            height: 400px;
+            width: 100%;
+            border-radius: 16px;
+            margin-top: 1rem;
+        }
+
+        .error {
+            color: #e74c3c;
+            font-weight: bold; /* Make error messages stand out */
+        }
+
+        .success {
+            color: #27ae60;
+            font-weight: bold;
+        }
+
+        .loading {
+            color: #3498db;
+            font-weight: bold;
+        }
+
+        .present,
+        .absent {
+            color: white;
+            padding: 0.7rem 1rem; /* Increased padding */
+            border-radius: 8px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3); /* Added text shadow */
+        }
+
+        .present {
+            background-color: #2ecc71;
+        }
+
+        .absent {
+            background-color: #e74c3c;
+        }
+
+        /* Custom Leaflet marker styles */
+        .target-icon {
+            background: rgba(52, 152, 219, 0.8);
+            border-radius: 5px;
+            color: white;
+            padding: 0.3rem 0.5rem;
+            font-weight: bold;
+            font-size: 0.9rem;
+            border: 2px solid #3498db;
+        }
+
+        .user-icon {
+            background: rgba(46, 204, 113, 0.8);
+            border-radius: 50%;
+            color: white;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.8rem;
+            border: 2px solid #2ecc71;
+        }
+    </style>
+</head>
+<body>
+    <h1>📍 Dynamic Attendance Checker</h1>
+
+    <div class="input-group">
+        <label for="eventLat">Event Latitude</label>
+        <input type="number" id="eventLat" placeholder="e.g., 28.6139" step="0.0001">
+    </div>
+
+    <div class="input-group">
+        <label for="eventLng">Event Longitude</label>
+        <input type="number" id="eventLng" placeholder="e.g., 77.2090" step="0.0001">
+    </div>
+
+    <div class="input-group">
+        <label for="eventRadius">Allowed Radius (meters)</label>
+        <input type="number" id="eventRadius" placeholder="e.g., 100" value="100">
+    </div>
+
+    <button id="checkInBtn">Check Attendance</button>
+    <button id="resetBtn">Reset</button>
+
+    <div id="output">Enter event location and click "Check Attendance".</div>
+    <div id="map">Map will load here...</div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        const checkInBtn = document.getElementById('checkInBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const output = document.getElementById('output');
+        const eventLatInput = document.getElementById('eventLat');
+        const eventLngInput = document.getElementById('eventLng');
+        const eventRadiusInput = document.getElementById('eventRadius');
+
+        let map;
+        let userMarker;
+        let targetMarker;
+        let radiusCircle;
+
+        checkInBtn.addEventListener('click', checkLocation);
+        resetBtn.addEventListener('click', resetSystem);
+
+        async function checkLocation() {
+            const eventLat = parseFloat(eventLatInput.value);
+            const eventLng = parseFloat(eventLngInput.value);
+            const eventRadius = parseFloat(eventRadiusInput.value);
+
+            if (isNaN(eventLat) || isNaN(eventLng) || isNaN(eventRadius)) {
+                output.innerHTML = "<span class='error'>Please enter valid coordinates and radius.</span>";
+                return;
+            }
+
+            output.innerHTML = "<span class='loading'>Checking your location...</span>";
+            output.className = "";
+
+            if (!navigator.geolocation) {
+                output.textContent = "Geolocation is not supported by your browser.";
+                output.classList.add('error');
+                return;
+            }
+
+            try {
+                const position = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject);
+                });
+
+                const { latitude: userLat, longitude: userLng } = position.coords;
+
+                // Initialize or update the map
+                if (!map) {
+                    initMap(userLat, userLng, eventLat, eventLng, eventRadius);
+                } else {
+                    updateMap(userLat, userLng, eventLat, eventLng, eventRadius);
+                }
+
+                // Calculate distance between user and event
+                const distance = calculateDistance(
+                    userLat,
+                    userLng,
+                    eventLat,
+                    eventLng
+                );
+
+                // Check if user is within allowed radius
+                if (distance <= eventRadius) {
+                    output.innerHTML = `
+                        <span class="present">✅ PRESENT</span><br>
+                        You are within ${Math.round(distance)} meters of the event location.<br>
+                        <strong>Your Coordinates:</strong> ${userLat.toFixed(4)}, ${userLng.toFixed(4)}<br>
+                        <strong>Event Location:</strong> ${eventLat.toFixed(4)}, ${eventLng.toFixed(4)}<br>
+                        <strong>Allowed Radius:</strong> ${eventRadius} meters
+                    `;
+                } else {
+                    output.innerHTML = `
+                        <span class="absent">❌ ABSENT (Too Far)</span><br>
+                        You are ${Math.round(distance)} meters away from the event.<br>
+                        <strong>Allowed Radius:</strong> ${eventRadius} meters<br>
+                        <strong>Your Coordinates:</strong> ${userLat.toFixed(4)}, ${userLng.toFixed(4)}
+                    `;
+                }
+            } catch (error) {
+                handleGeolocationError(error);
+            }
+        }
+
+        // 🗺️ Initialize the map with user and event locations
+        function initMap(userLat, userLng, eventLat, eventLng, eventRadius) {
+            map = L.map('map').setView([eventLat, eventLng], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            }).addTo(map);
+
+            // Add event location marker with custom icon
+            targetMarker = L.marker([eventLat, eventLng], {
+                icon: L.divIcon({ className: 'target-icon', html: '📍 Event' })
+            }).addTo(map)
+                .bindPopup(`<b>Event Location</b><br>Allowed Radius: ${eventRadius}m`)
+                .openPopup();
+
+            // Add user location marker with custom icon
+            userMarker = L.marker([userLat, userLng], {
+                icon: L.divIcon({ className: 'user-icon', html: '👤' })
+            }).addTo(map)
+                .bindPopup("Your Location")
+                .openPopup();
+
+            // Draw a circle around the event location (allowed radius)
+            radiusCircle = L.circle([eventLat, eventLng], {
+                color: '#3498db',
+                fillColor: '#2980b9',
+                fillOpacity: 0.2,
+                radius: eventRadius
+            }).addTo(map);
+        }
+
+        // 🔄 Update map when user moves or event location changes
+        function updateMap(userLat, userLng, eventLat, eventLng, eventRadius) {
+            map.setView([eventLat, eventLng], 15);
+            targetMarker.setLatLng([eventLat, eventLng]).bindPopup(`<b>Event Location</b><br>Allowed Radius: ${eventRadius}m`).openPopup();
+            userMarker.setLatLng([userLat, userLng]).bindPopup("Your Location").openPopup();
+
+            // Update radius circle
+            if (radiusCircle) map.removeLayer(radiusCircle);
+            radiusCircle = L.circle([eventLat, eventLng], {
+                color: '#3498db',
+                fillColor: '#2980b9',
+                fillOpacity: 0.2,
+                radius: eventRadius
+            }).addTo(map);
+        }
+
+        // 📏 Calculate distance between two coordinates (in meters)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Earth radius in meters
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                        Math.cos(φ1) * Math.cos(φ2) *
+                        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            return R * c; // Distance in meters
+        }
+
+        // ❌ Handle geolocation errors
+        function handleGeolocationError(error) {
+            let errorMessage = "❌ Error fetching location: ";
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    errorMessage += "Permission denied. Please allow location access.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    errorMessage += "Position unavailable.";
+                    break;
+                case error.TIMEOUT:
+                    errorMessage += "Request timed out.";
+                    break;
+                default:
+                    errorMessage += "Unknown error.";
+            }
+            output.textContent = errorMessage;
+            output.classList.add('error');
+        }
+
+        // 🔄 Reset the system
+        function resetSystem() {
+            output.textContent = "Enter event location and click 'Check Attendance'.";
+            output.className = "";
+            eventLatInput.value = "";
+            eventLngInput.value = "";
+            eventRadiusInput.value = "100";
+
+            if (map) {
+                map.off();
+                map.remove();
+                map = null;
+            }
+            document.getElementById('map').innerHTML = "Map will load here...";
+        }
+    </script>
+</body>
+</html>
